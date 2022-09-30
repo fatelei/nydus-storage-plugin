@@ -42,18 +42,8 @@ $ sudo bin/nydus-store --log-to-stdout --log-level debug \
   --root /var/lib/nydus-store
 ```
 
-5. Convert a nydus image
+5. Run container with nydus image
 
 ```shell
-# Prepare a local registry
-$ podman run -d -it -p 5000:5000 --name registry docker.io/library/registry:2
-
-# Convert OCI v1 image to nydus image:
-$ sudo nydusify convert --source ubuntu --target localhost:5000/ubuntu:latest-nydus
-```
-
-6. Run container with nydus image
-
-```shell
-$ sudo podman run -it --tls-verify=false --rm localhost:5000/ubuntu:latest-nydus /bin/bash
+$ sudo podman run -it --tls-verify=false --rm ghcr.io/dragonflyoss/image-service/nginx:nydus-latest /bin/bash
 ```
