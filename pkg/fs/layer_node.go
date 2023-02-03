@@ -85,6 +85,7 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 
 		l, err := n.fs.layManager.ResolverMetaLayer(ctx, n.refNode.ref, n.refNode.rawRef, n.digest)
 		if err != nil {
+			log.G(ctx).Warnf("resolve meta layer failed: %+v", err)
 			return nil, syscall.EIO
 		}
 
@@ -100,10 +101,11 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 			})
 		}
 
+		sAttr := defaultDirAttr(&out.Attr)
 		child := &diffNode{
 			fs: n.fs,
 		}
-		sAttr := defaultDirAttr(&out.Attr)
+		copyAttr(&child.attr, &out.Attr)
 		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
 			out.Attr.Ino = uint64(ino)
 			child.attr.Ino = uint64(ino)
