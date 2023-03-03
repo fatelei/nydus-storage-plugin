@@ -86,12 +86,11 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 		l, err := n.fs.layManager.ResolverMetaLayer(ctx, n.refNode.ref, n.refNode.rawRef, n.digest)
 		if err != nil {
 			log.G(ctx).Warnf("resolve meta layer failed: %+v", err)
-			return nil, syscall.EIO
 		}
 
 		if name == blobLink {
-			sAttr := layerToAttr(l, &out.Attr)
-			cn := &blobNode{l: l}
+			sAttr := layerToAttr(&l.Descriptor, &out.Attr)
+			cn := &blobNode{l: &l.Descriptor}
 			copyAttr(&cn.attr, &out.Attr)
 			return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
 				out.Attr.Ino = uint64(ino)
