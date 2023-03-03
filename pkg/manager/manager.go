@@ -29,6 +29,13 @@ type nydusMessage struct {
 	Err error
 }
 
+type MountLayer struct {
+	Descriptor  ocispec.Descriptor
+	IsMetaLayer bool
+}
+
+var MountMetaLayerFailed = errors.New("mount meta layer failed")
+
 func NewLayerManager(ctx context.Context, rootDir string, hosts source.RegistryHosts, cfg *config.Config) (*LayerManager, error) {
 	verifier, err := signature.NewVerifier(cfg.PublicKeyFile, cfg.ValidateSignature)
 	if err != nil {
@@ -110,7 +117,7 @@ func (r *LayerManager) GetLayerInfo(ctx context.Context, refspec reference.Spec,
 	return genLayerInfo(dgst, manifest, imageConfig)
 }
 
-func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.Spec, snapshotID string, digest digest.Digest) (*ocispec.Descriptor, error) {
+func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.Spec, snapshotID string, digest digest.Digest) (*MountLayer, error) {
 	// get manifest from cache.
 	manifest, _, err := r.refPool.loadRef(ctx, refspec)
 	if err != nil {
@@ -130,14 +137,20 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		return nil, fmt.Errorf("unknown digest %v for ref %q", target, refspec.String())
 	}
 
+	layer := MountLayer{
+		Descriptor:  target,
+		IsMetaLayer: false,
+	}
+
 	// Download nydus bootstrap layer and mount it.
 	if _, ok := target.Annotations[label.NydusMetaLayer]; ok {
 		target.Annotations[label.CRIImageRef] = refspec.String()
 		target.Annotations[label.CRILayerDigest] = target.Digest.String()
+		layer.IsMetaLayer = true
 
 		if _, ok = r.nydusMetaLayer.Load(snapshotID); ok {
 			log.G(ctx).Warnf("nydus duplicate mount meta layer ref is %s digest is %s", refspec.String(), target.Digest.String())
-			return &target, nil
+			return &layer, nil
 		}
 
 		workdir := r.nydusFs.UpperPath(snapshotID)
@@ -180,7 +193,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 
 		err = r.nydusFs.WaitUntilReady(ctx, snapshotID)
 		if err != nil {
-			return nil, err
+			return nil, MountMetaLayerFailed
 		}
 
 		// Link nydusd mount dir to <mountpoint>/<ref>/<digest>/<diff>
@@ -190,7 +203,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 			cmd := exec.Command("mount", "-o", "bind,ro", mountPoint, targetPath)
 			if err = cmd.Start(); err == nil {
 				r.nydusMetaLayer.Store(snapshotID, targetPath)
-				return &target, nil
+				return &layer, nil
 			}
 			log.G(ctx).WithError(err).Error("mount bind file has error")
 			return nil, err
@@ -199,7 +212,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		return nil, err
 	}
 	// TODO support normal image format.
-	return &target, nil
+	return &layer, nil
 }
 
 func (r *LayerManager) Release(ctx context.Context, refspec reference.Spec, dgst digest.Digest, snapshotID string) (int, error) {
