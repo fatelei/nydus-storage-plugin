@@ -32,6 +32,7 @@ type nydusMessage struct {
 type MountLayer struct {
 	Descriptor  ocispec.Descriptor
 	IsMetaLayer bool
+	MountFailed bool
 }
 
 var MountMetaLayerFailed = errors.New("mount meta layer failed")
@@ -157,7 +158,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		if _, err = os.Stat(workdir); os.IsNotExist(err) {
 			if err = os.MkdirAll(workdir, 0755); err != nil {
 				log.G(ctx).WithError(err).Error("mkdir nydus snapshot dir failed")
-				return nil, err
+				return &layer, err
 			}
 		}
 
@@ -165,7 +166,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		err = r.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: snapshotID}, target.Annotations)
 		if err != nil && !strings.Contains(err.Error(), "file exists") {
 			log.G(ctx).WithError(err).Error("download snapshot files failed")
-			return nil, err
+			return &layer, err
 		}
 
 		nydusMsgChannel := make(chan nydusMessage)
@@ -188,12 +189,12 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 
 		event := <-nydusMsgChannel
 		if event.Err != nil {
-			return nil, event.Err
+			return &layer, event.Err
 		}
 
 		err = r.nydusFs.WaitUntilReady(ctx, snapshotID)
 		if err != nil {
-			return nil, MountMetaLayerFailed
+			return &layer, MountMetaLayerFailed
 		}
 
 		// Link nydusd mount dir to <mountpoint>/<ref>/<digest>/<diff>
@@ -206,10 +207,10 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 				return &layer, nil
 			}
 			log.G(ctx).WithError(err).Error("mount bind file has error")
-			return nil, err
+			return &layer, err
 		}
 		log.G(ctx).WithError(err).Error("get mount point failed")
-		return nil, err
+		return &layer, err
 	}
 	// TODO support normal image format.
 	return &layer, nil
