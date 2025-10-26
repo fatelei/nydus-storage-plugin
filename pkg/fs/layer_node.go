@@ -24,11 +24,10 @@ type layerNode struct {
 	digest  digest.Digest
 }
 
-var _ = (fusefs.NodeGetattrer)((*diffNode)(nil))
-var _ = (fusefs.InodeEmbedder)((*diffNode)(nil))
 var _ = (fusefs.InodeEmbedder)((*layerNode)(nil))
 var _ = (fusefs.NodeCreater)((*layerNode)(nil))
 var _ = (fusefs.NodeLookuper)((*layerNode)(nil))
+var _ = (fusefs.NodeReaddirer)((*layerNode)(nil))
 
 // Create marks this layer as "using".
 // We don't use refnode.Mkdir because Mkdir event doesn't reach here if layernode already exists.
@@ -130,4 +129,15 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 		log.G(ctx).Warnf("unknown filename %q", name)
 		return nil, syscall.ENOENT
 	}
+}
+
+// Readdir enumerates expected entries to help consumers like Podman discover files reliably.
+func (n *layerNode) Readdir(ctx context.Context) (fusefs.DirStream, syscall.Errno) {
+	entries := []fuse.DirEntry{
+		{Name: layerInfoLink, Mode: fuse.S_IFREG},
+		{Name: blobLink, Mode: fuse.S_IFREG},
+		{Name: layerLink, Mode: fuse.S_IFDIR},
+		{Name: layerUseFile, Mode: fuse.S_IFREG},
+	}
+	return fusefs.NewListDirStream(entries), 0
 }

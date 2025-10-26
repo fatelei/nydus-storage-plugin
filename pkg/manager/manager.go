@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -21,6 +20,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
+	"golang.org/x/sys/unix"
 
 	"github.com/containers/nydus-storage-plugin/pkg/source"
 )
@@ -84,9 +84,6 @@ func NewLayerManager(ctx context.Context, rootDir string, hosts source.RegistryH
 	refPool, err := newRefPool(ctx, rootDir, hosts)
 	if err != nil {
 		return nil, err
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to setup resolver: %w", err)
 	}
 	return &LayerManager{
 		refPool:    refPool,
@@ -197,20 +194,30 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 			return &layer, MountMetaLayerFailed
 		}
 
-		// Link nydusd mount dir to <mountpoint>/<ref>/<digest>/<diff>
-		targetPath := fmt.Sprintf("%s/store/%s/%s/diff", r.rootDir, snapshotID, target.Digest.String())
-		var mountPoint string
-		if mountPoint, err = r.nydusFs.MountPoint(snapshotID); err == nil {
-			cmd := exec.Command("mount", "-o", "bind,ro", mountPoint, targetPath)
-			if err = cmd.Start(); err == nil {
+		// Link nydusd mount dir to <mountpoint>/<ref>/<digest>/diff
+			targetPath := filepath.Join(r.rootDir, "store", snapshotID, target.Digest.String(), "diff")
+			var mountPoint string
+			if mountPoint, err = r.nydusFs.MountPoint(snapshotID); err == nil {
+				if err := os.MkdirAll(targetPath, 0755); err != nil {
+					log.G(ctx).WithError(err).Error("ensure targetPath failed")
+					return &layer, err
+				}
+				// Perform a bind mount and then remount read-only for robustness across kernels
+				if err = unix.Mount(mountPoint, targetPath, "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
+					log.G(ctx).WithError(err).Error("bind mount failed")
+					return &layer, err
+				}
+				if err = unix.Mount("", targetPath, "", unix.MS_BIND|unix.MS_REMOUNT|unix.MS_RDONLY, ""); err != nil {
+					log.G(ctx).WithError(err).Error("remount ro failed")
+					// try to unmount in case remount failed partially
+					_ = unix.Unmount(targetPath, 0)
+					return &layer, err
+				}
 				r.nydusMetaLayer.Store(snapshotID, targetPath)
 				return &layer, nil
 			}
-			log.G(ctx).WithError(err).Error("mount bind file has error")
+			log.G(ctx).WithError(err).Error("get mount point failed")
 			return &layer, err
-		}
-		log.G(ctx).WithError(err).Error("get mount point failed")
-		return &layer, err
 	}
 	// TODO support normal image format.
 	return &layer, nil
@@ -233,16 +240,14 @@ func (r *LayerManager) Release(ctx context.Context, refspec reference.Spec, dgst
 	i := r.refCounter[refspec.String()][dgst.String()]
 	if i <= 0 {
 		if v, ok := r.nydusMetaLayer.Load(snapshotID); ok {
-			cmd := exec.Command("umount", v.(string))
-			if err := cmd.Run(); err != nil {
+			if err := unix.Unmount(v.(string), 0); err != nil {
 				log.G(ctx).Errorf("umount bind nydus %v/%v failed: %+v", refspec, dgst, err)
 				return 0, err
 			}
 			r.nydusMetaLayer.Delete(snapshotID)
 		}
-
 		// No reference to this layer. release it.
-		delete(r.refCounter, dgst.String())
+		delete(r.refCounter[refspec.String()], dgst.String())
 		if len(r.refCounter[refspec.String()]) == 0 {
 			delete(r.refCounter, refspec.String())
 		}
@@ -253,8 +258,7 @@ func (r *LayerManager) Release(ctx context.Context, refspec reference.Spec, dgst
 
 func (r *LayerManager) ReleaseAll(ctx context.Context) {
 	r.nydusMetaLayer.Range(func(key, value interface{}) bool {
-		cmd := exec.Command("umount", value.(string))
-		if err := cmd.Run(); err != nil {
+		if err := unix.Unmount(value.(string), 0); err != nil {
 			log.G(ctx).WithError(err).Warnf("umount bind nydus %v/%v failed", key, value)
 		}
 		return true
