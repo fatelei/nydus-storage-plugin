@@ -6,8 +6,8 @@ import (
 	"context"
 	"encoding/base64"
 	"syscall"
+	"log/slog"
 
-	"github.com/containerd/containerd/log"
 	"github.com/containerd/containerd/reference"
 	fusefs "github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -26,7 +26,7 @@ var _ = (fusefs.NodeLookuper)((*rootNode)(nil))
 // Lookup loads manifest and config of specified name (image reference)
 // and returns refnode of the specified name
 func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fusefs.Inode, syscall.Errno) {
-	log.L.WithContext(ctx).Debugf("root node lookup name = %s", name)
+	slog.DebugContext(ctx, "root node lookup", "name", name)
 	if child := n.GetChild(name); child != nil {
 		switch tn := child.Operations().(type) {
 		case *fusefs.MemSymlink:
@@ -34,7 +34,7 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 		case *refNode:
 			copyAttr(&out.Attr, &tn.attr)
 		default:
-			log.L.WithContext(ctx).Warn("rootNode.Lookup: unknown node type detected")
+			slog.WarnContext(ctx, "rootNode.Lookup: unknown node type detected")
 			return nil, syscall.EIO
 		}
 		out.Attr.Ino = child.StableAttr().Ino
@@ -57,14 +57,14 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 
 	refBytes, err := base64.StdEncoding.DecodeString(name)
 	if err != nil {
-		log.G(ctx).WithError(err).Errorf("failed to decode ref base64 %q", name)
+			slog.ErrorContext(ctx, "failed to decode ref base64", "name", name, "err", err)
 		return nil, syscall.EINVAL
 	}
 	ref := string(refBytes)
 	var refSpec reference.Spec
 	refSpec, err = reference.Parse(ref)
 	if err != nil {
-		log.G(ctx).WithError(err).Errorf("invalid reference %q for %q", ref, name)
+			slog.ErrorContext(ctx, "invalid reference", "ref", ref, "raw", name, "err", err)
 		return nil, syscall.EINVAL
 	}
 	sAttr := defaultDirAttr(&out.Attr)

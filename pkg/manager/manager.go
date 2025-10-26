@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"log/slog"
 
-	"github.com/containerd/containerd/log"
 	"github.com/containerd/containerd/reference"
 	"github.com/containerd/containerd/snapshots/storage"
 	"github.com/containerd/nydus-snapshotter/config"
@@ -20,10 +20,20 @@ import (
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
-	"golang.org/x/sys/unix"
 
 	"github.com/containers/nydus-storage-plugin/pkg/source"
 )
+
+// fsDriver abstracts the subset of nydus filesystem methods we use, to enable testing.
+// Implemented by *nydusFS.Filesystem.
+type fsDriver interface {
+	UpperPath(id string) string
+	PrepareMetaLayer(ctx context.Context, snapshot storage.Snapshot, annotations map[string]string) error
+	Mount(ctx context.Context, snapshotID string, annotations map[string]string) error
+	WaitUntilReady(ctx context.Context, snapshotID string) error
+	MountPoint(snapshotID string) (string, error)
+}
+
 
 type nydusMessage struct {
 	Err error
@@ -102,7 +112,7 @@ type LayerManager struct {
 	refCounter     map[string]map[string]int
 	rootDir        string
 	nydusMetaLayer sync.Map
-	nydusFs        *nydusFS.Filesystem
+	nydusFs        fsDriver
 
 	mu sync.Mutex
 }
@@ -147,32 +157,32 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		layer.IsMetaLayer = true
 
 		if _, ok = r.nydusMetaLayer.Load(snapshotID); ok {
-			log.G(ctx).Warnf("nydus duplicate mount meta layer ref is %s digest is %s", refspec.String(), target.Digest.String())
+			slog.WarnContext(ctx, "nydus duplicate mount meta layer", "ref", refspec.String(), "digest", target.Digest.String())
 			return &layer, nil
 		}
 
 		workdir := r.nydusFs.UpperPath(snapshotID)
 		if _, err = os.Stat(workdir); os.IsNotExist(err) {
 			if err = os.MkdirAll(workdir, 0755); err != nil {
-				log.G(ctx).WithError(err).Error("mkdir nydus snapshot dir failed")
+				slog.ErrorContext(ctx, "mkdir nydus snapshot dir failed", "err", err)
 				return &layer, err
 			}
 		}
 
 		// Download nydus bootstrap layer to disk.
-		err = r.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: snapshotID}, target.Annotations)
-		if err != nil && !strings.Contains(err.Error(), "file exists") {
-			log.G(ctx).WithError(err).Error("download snapshot files failed")
-			return &layer, err
-		}
+			err = r.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: snapshotID}, target.Annotations)
+			if err != nil && !strings.Contains(err.Error(), "file exists") {
+				slog.ErrorContext(ctx, "download snapshot files failed", "err", err)
+				return &layer, err
+			}
 
 		nydusMsgChannel := make(chan nydusMessage)
 
 		go func() {
-			log.G(ctx).Debugf("nydus mount meta layer ref is %s digest is %s", refspec.String(), target.Digest.String())
+			slog.DebugContext(ctx, "nydus mount meta layer", "ref", refspec.String(), "digest", target.Digest.String())
 			err = r.nydusFs.Mount(ctx, snapshotID, target.Annotations)
 			if err != nil {
-				log.G(ctx).WithError(err).Error("nydus mount failed")
+				slog.ErrorContext(ctx, "nydus mount failed", "err", err)
 				nydusMsgChannel <- nydusMessage{
 					Err: err,
 				}
@@ -199,24 +209,24 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 			var mountPoint string
 			if mountPoint, err = r.nydusFs.MountPoint(snapshotID); err == nil {
 				if err := os.MkdirAll(targetPath, 0755); err != nil {
-					log.G(ctx).WithError(err).Error("ensure targetPath failed")
+					slog.ErrorContext(ctx, "ensure targetPath failed", "err", err)
 					return &layer, err
 				}
 				// Perform a bind mount and then remount read-only for robustness across kernels
-				if err = unix.Mount(mountPoint, targetPath, "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
-					log.G(ctx).WithError(err).Error("bind mount failed")
+if err = unixMount(mountPoint, targetPath, "", msBind|msRec, ""); err != nil {
+					slog.ErrorContext(ctx, "bind mount failed", "err", err)
 					return &layer, err
 				}
-				if err = unix.Mount("", targetPath, "", unix.MS_BIND|unix.MS_REMOUNT|unix.MS_RDONLY, ""); err != nil {
-					log.G(ctx).WithError(err).Error("remount ro failed")
+if err = unixMount("", targetPath, "", msBind|msRemount|msRdonly, ""); err != nil {
+					slog.ErrorContext(ctx, "remount ro failed", "err", err)
 					// try to unmount in case remount failed partially
-					_ = unix.Unmount(targetPath, 0)
+					_ = unixUnmount(targetPath, 0)
 					return &layer, err
 				}
 				r.nydusMetaLayer.Store(snapshotID, targetPath)
 				return &layer, nil
 			}
-			log.G(ctx).WithError(err).Error("get mount point failed")
+			slog.ErrorContext(ctx, "get mount point failed", "err", err)
 			return &layer, err
 	}
 	// TODO support normal image format.
@@ -240,8 +250,8 @@ func (r *LayerManager) Release(ctx context.Context, refspec reference.Spec, dgst
 	i := r.refCounter[refspec.String()][dgst.String()]
 	if i <= 0 {
 		if v, ok := r.nydusMetaLayer.Load(snapshotID); ok {
-			if err := unix.Unmount(v.(string), 0); err != nil {
-				log.G(ctx).Errorf("umount bind nydus %v/%v failed: %+v", refspec, dgst, err)
+if err := unixUnmount(v.(string), 0); err != nil {
+				slog.ErrorContext(ctx, "umount bind nydus failed", "ref", refspec.String(), "digest", dgst.String(), "err", err)
 				return 0, err
 			}
 			r.nydusMetaLayer.Delete(snapshotID)
@@ -251,18 +261,45 @@ func (r *LayerManager) Release(ctx context.Context, refspec reference.Spec, dgst
 		if len(r.refCounter[refspec.String()]) == 0 {
 			delete(r.refCounter, refspec.String())
 		}
-		log.G(ctx).WithField("refcounter", i).Infof("layer %v/%v is released due to no reference", refspec, dgst)
+		slog.InfoContext(ctx, "layer released due to no reference", "ref", refspec.String(), "digest", dgst.String(), "refcounter", i)
 	}
 	return i, nil
 }
 
 func (r *LayerManager) ReleaseAll(ctx context.Context) {
 	r.nydusMetaLayer.Range(func(key, value interface{}) bool {
-		if err := unix.Unmount(value.(string), 0); err != nil {
-			log.G(ctx).WithError(err).Warnf("umount bind nydus %v/%v failed", key, value)
+if err := unixUnmount(value.(string), 0); err != nil {
+			slog.WarnContext(ctx, "umount bind nydus failed", "key", key, "value", value, "err", err)
 		}
 		return true
 	})
+}
+
+// RecoverOrphanMounts attempts to unmount any bind-mounted diff directories
+// left over from previous crashes. It walks <root>/store/*/*/diff and tries to unmount.
+func (r *LayerManager) RecoverOrphanMounts(ctx context.Context) error {
+	storeRoot := filepath.Join(r.rootDir, "store")
+	ents, err := os.ReadDir(storeRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, e := range ents {
+		if !e.IsDir() { continue }
+		refDir := filepath.Join(storeRoot, e.Name())
+		layers, _ := os.ReadDir(refDir)
+		for _, l := range layers {
+			if !l.IsDir() { continue }
+			diff := filepath.Join(refDir, l.Name(), "diff")
+			// Best-effort unmount
+			if err := unixUnmount(diff, 0); err == nil {
+				slog.DebugContext(ctx, "recovered orphan mount", "path", diff)
+			}
+		}
+	}
+	return nil
 }
 
 func (r *LayerManager) Use(refspec reference.Spec, dgst digest.Digest) int {

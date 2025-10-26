@@ -2,8 +2,8 @@ package dockerconfig
 
 import (
 	"context"
+	"log/slog"
 
-	"github.com/containerd/containerd/log"
 	"github.com/containerd/containerd/reference"
 	"github.com/docker/cli/cli/config"
 
@@ -16,7 +16,7 @@ func NewDockerconfigKeychain(ctx context.Context) resolver.Credential {
 	return func(host string, refspec reference.Spec) (string, string, error) {
 		cf, err := config.Load("")
 		if err != nil {
-			log.G(ctx).WithError(err).Warnf("failed to load docker config file")
+			slog.WarnContext(ctx, "failed to load docker config file", "err", err)
 			return "", "", nil
 		}
 
