@@ -4,8 +4,8 @@ package fs
 
 import (
 	"context"
-	"syscall"
 	"log/slog"
+	"syscall"
 
 	"github.com/containerd/containerd/reference"
 	fusefs "github.com/hanwen/go-fuse/v2/fs"
@@ -37,7 +37,7 @@ func (n *refNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (
 			slog.WarnContext(ctx, "rootnode.Lookup: unknown node type detected")
 			return nil, syscall.EIO
 		}
-		out.Attr.Ino = child.StableAttr().Ino
+		out.Ino = child.StableAttr().Ino
 		return child, 0
 	}
 	targetDigest, err := digest.Parse(name)
@@ -53,7 +53,7 @@ func (n *refNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (
 	}
 	copyAttr(&child.attr, &out.Attr)
 	return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
-		out.Attr.Ino = uint64(ino)
+		out.Ino = uint64(ino)
 		child.attr.Ino = uint64(ino)
 		sAttr.Ino = uint64(ino)
 		return n.NewInode(ctx, child, sAttr)

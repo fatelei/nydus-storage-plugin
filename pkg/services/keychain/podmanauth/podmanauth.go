@@ -22,7 +22,7 @@ import (
 // 2) $XDG_RUNTIME_DIR/containers/auth.json
 // 3) $HOME/.config/containers/auth.json
 func NewPodmanAuthKeychain(ctx context.Context) resolver.Credential {
-	return func(host string, refspec reference.Spec) (string, string, error) {
+	return func(host string, _ reference.Spec) (string, string, error) {
 		path, err := findAuthFile()
 		if err != nil || path == "" {
 			return "", "", nil

@@ -14,8 +14,8 @@ func TestDiffNodeGetattrCopiesAttr(t *testing.T) {
 	if eno := d.Getattr(context.Background(), nil, &out); eno != 0 {
 		t.Fatalf("Getattr errno=%d", eno)
 	}
-	if out.Attr.Mode != d.attr.Mode {
-		t.Fatalf("mode mismatch: got %o want %o", out.Attr.Mode, d.attr.Mode)
+	if out.Mode != d.attr.Mode {
+		t.Fatalf("mode mismatch: got %o want %o", out.Mode, d.attr.Mode)
 	}
 }
 

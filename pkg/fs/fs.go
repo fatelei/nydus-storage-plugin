@@ -99,7 +99,7 @@ func (r *inoReleasable) releasable() bool {
 	return r.n.EmbeddedInode().Forgotten()
 }
 
-func Mount(ctx context.Context, mountPoint string, rootDir string, debug bool, layManager *manager.LayerManager, opts ...MountOption) error {
+func Mount(_ context.Context, mountPoint string, _ string, debug bool, layManager *manager.LayerManager, opts ...MountOption) error {
 	// Apply mount options
 	for _, o := range opts {
 		if o != nil {

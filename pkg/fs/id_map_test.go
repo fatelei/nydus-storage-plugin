@@ -11,7 +11,7 @@ func (r *tr) releasable() bool { return r.releasableFlag }
 func TestIDMapAddAssignsAndReuses(t *testing.T) {
 	m := &idMap{}
 	var saved []*tr
-	add := func(id uint32) (releasable, error) {
+	add := func(_ uint32) (releasable, error) {
 		r := &tr{}
 		saved = append(saved, r)
 		return r, nil

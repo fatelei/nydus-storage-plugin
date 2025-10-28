@@ -6,8 +6,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"syscall"
 	"log/slog"
+	"syscall"
 
 	fusefs "github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -31,7 +31,7 @@ var _ = (fusefs.NodeReaddirer)((*layerNode)(nil))
 
 // Create marks this layer as "using".
 // We don't use refnode.Mkdir because Mkdir event doesn't reach here if layernode already exists.
-func (n *layerNode) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fusefs.Inode, fh fusefs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+func (n *layerNode) Create(ctx context.Context, name string, _ uint32, _ uint32, _ *fuse.EntryOut) (node *fusefs.Inode, fh fusefs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
 	if name == layerUseFile {
 		current := n.fs.layManager.Use(n.refNode.ref, n.digest)
 		slog.InfoContext(ctx, "layer marked USING", "ref", n.refNode.ref.String(), "digest", n.digest.String(), "refcounter", current)
@@ -59,7 +59,7 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 		cn := &fusefs.MemRegularFile{Data: infoData}
 		copyAttr(&cn.Attr, &out.Attr)
 		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
-			out.Attr.Ino = uint64(ino)
+			out.Ino = uint64(ino)
 			cn.Attr.Ino = uint64(ino)
 			sAttr.Ino = uint64(ino)
 			return n.NewInode(ctx, cn, sAttr)
@@ -75,8 +75,8 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 				copyAttr(&out.Attr, &ao.Attr)
 				n.fs.knownNodeMu.Unlock()
 				return n.NewInode(ctx, lh.n, fusefs.StableAttr{
-					Mode: out.Attr.Mode,
-					Ino:  out.Attr.Ino,
+					Mode: out.Mode,
+					Ino:  out.Ino,
 				}), 0
 			}
 			n.fs.knownNodeMu.Unlock()
@@ -94,7 +94,7 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 			cn := &blobNode{l: &l.Descriptor}
 			copyAttr(&cn.attr, &out.Attr)
 			return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
-				out.Attr.Ino = uint64(ino)
+				out.Ino = uint64(ino)
 				cn.attr.Ino = uint64(ino)
 				sAttr.Ino = uint64(ino)
 				return n.NewInode(ctx, cn, sAttr)
@@ -113,7 +113,7 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 		}
 		copyAttr(&child.attr, &out.Attr)
 		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
-			out.Attr.Ino = uint64(ino)
+			out.Ino = uint64(ino)
 			child.attr.Ino = uint64(ino)
 			sAttr.Ino = uint64(ino)
 			cn := n.NewInode(ctx, child, sAttr)
@@ -131,16 +131,16 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 			return cn
 		})
 	case layerUseFile:
-			slog.DebugContext(ctx, "use file referred; returning ENOENT for reference mgmt")
+		slog.DebugContext(ctx, "use file referred; returning ENOENT for reference mgmt")
 		return nil, syscall.ENOENT
 	default:
-			slog.WarnContext(ctx, "unknown filename", "name", name)
+		slog.WarnContext(ctx, "unknown filename", "name", name)
 		return nil, syscall.ENOENT
 	}
 }
 
 // Readdir enumerates expected entries to help consumers like Podman discover files reliably.
-func (n *layerNode) Readdir(ctx context.Context) (fusefs.DirStream, syscall.Errno) {
+func (n *layerNode) Readdir(_ context.Context) (fusefs.DirStream, syscall.Errno) {
 	entries := []fuse.DirEntry{
 		{Name: layerInfoLink, Mode: fuse.S_IFREG},
 		{Name: blobLink, Mode: fuse.S_IFREG},

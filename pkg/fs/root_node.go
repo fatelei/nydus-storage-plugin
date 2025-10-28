@@ -5,8 +5,8 @@ package fs
 import (
 	"context"
 	"encoding/base64"
-	"syscall"
 	"log/slog"
+	"syscall"
 
 	"github.com/containerd/containerd/reference"
 	fusefs "github.com/hanwen/go-fuse/v2/fs"
@@ -37,7 +37,7 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 			slog.WarnContext(ctx, "rootNode.Lookup: unknown node type detected")
 			return nil, syscall.EIO
 		}
-		out.Attr.Ino = child.StableAttr().Ino
+		out.Ino = child.StableAttr().Ino
 		return child, 0
 	}
 
@@ -48,7 +48,7 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 		cn := &fusefs.MemSymlink{Data: []byte(n.fs.layManager.RefRoot())}
 		copyAttr(&cn.Attr, &out.Attr)
 		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
-			out.Attr.Ino = uint64(ino)
+			out.Ino = uint64(ino)
 			cn.Attr.Ino = uint64(ino)
 			sAttr.Ino = uint64(ino)
 			return n.NewInode(ctx, cn, sAttr)
@@ -57,14 +57,14 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 
 	refBytes, err := base64.StdEncoding.DecodeString(name)
 	if err != nil {
-			slog.ErrorContext(ctx, "failed to decode ref base64", "name", name, "err", err)
+		slog.ErrorContext(ctx, "failed to decode ref base64", "name", name, "err", err)
 		return nil, syscall.EINVAL
 	}
 	ref := string(refBytes)
 	var refSpec reference.Spec
 	refSpec, err = reference.Parse(ref)
 	if err != nil {
-			slog.ErrorContext(ctx, "invalid reference", "ref", ref, "raw", name, "err", err)
+		slog.ErrorContext(ctx, "invalid reference", "ref", ref, "raw", name, "err", err)
 		return nil, syscall.EINVAL
 	}
 	sAttr := defaultDirAttr(&out.Attr)
@@ -75,7 +75,7 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 	}
 	copyAttr(&child.attr, &out.Attr)
 	return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
-		out.Attr.Ino = uint64(ino)
+		out.Ino = uint64(ino)
 		child.attr.Ino = uint64(ino)
 		sAttr.Ino = uint64(ino)
 		return n.NewInode(ctx, child, sAttr)

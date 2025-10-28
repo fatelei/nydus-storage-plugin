@@ -20,12 +20,14 @@ type fakeFS struct {
 }
 
 func (f *fakeFS) UpperPath(id string) string { return filepath.Join(f.root, "snapshots", id) }
-func (f *fakeFS) PrepareMetaLayer(ctx context.Context, snapshot storage.Snapshot, annotations map[string]string) error {
+func (f *fakeFS) PrepareMetaLayer(_ context.Context, _ storage.Snapshot, _ map[string]string) error {
 	return nil
 }
-func (f *fakeFS) Mount(ctx context.Context, snapshotID string, annotations map[string]string) error { return nil }
-func (f *fakeFS) WaitUntilReady(ctx context.Context, snapshotID string) error { return nil }
-func (f *fakeFS) MountPoint(snapshotID string) (string, error) { return f.mp, nil }
+func (f *fakeFS) Mount(_ context.Context, _ string, _ map[string]string) error {
+	return nil
+}
+func (f *fakeFS) WaitUntilReady(_ context.Context, _ string) error { return nil }
+func (f *fakeFS) MountPoint(_ string) (string, error)              { return f.mp, nil }
 
 func TestResolverMetaLayerBindMountAndRemountRO(t *testing.T) {
 	ctx := context.Background()
@@ -64,7 +66,10 @@ func TestResolverMetaLayerBindMountAndRemountRO(t *testing.T) {
 	// stub unix mount
 	origMount := unixMount
 	defer func() { unixMount = origMount }()
-	type mcall struct{ src, tgt, fstype, data string; flags uintptr }
+	type mcall struct {
+		src, tgt, fstype, data string
+		flags                  uintptr
+	}
 	var calls []mcall
 	unixMount = func(source, target, fstype string, flags uintptr, data string) error {
 		calls = append(calls, mcall{source, target, fstype, data, flags})
@@ -129,7 +134,7 @@ func TestResolverMetaLayerCreatesTargetDir(t *testing.T) {
 	lm := &LayerManager{refPool: p, refCounter: make(map[string]map[string]int), nydusFs: &fakeFS{root: dir, mp: mountPoint}, rootDir: dir}
 	origMount := unixMount
 	defer func() { unixMount = origMount }()
-	unixMount = func(source, target, fstype string, flags uintptr, data string) error { return nil }
+	unixMount = func(_, _, _ string, _ uintptr, _ string) error { return nil }
 	snapshotID := "snap-2"
 	_, err = lm.ResolverMetaLayer(ctx, refspec, snapshotID, dgst)
 	if err != nil {
@@ -158,7 +163,7 @@ func TestReleaseDecrementsAndUnmountsAndCleansMaps(t *testing.T) {
 	var unmounted []string
 	origUnmount := unixUnmount
 	defer func() { unixUnmount = origUnmount }()
-	unixUnmount = func(target string, flags int) error {
+	unixUnmount = func(target string, _ int) error {
 		unmounted = append(unmounted, target)
 		return nil
 	}

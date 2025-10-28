@@ -7,11 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
-	"log/slog"
 
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/platforms"
@@ -23,7 +23,7 @@ import (
 
 	"github.com/containers/nydus-storage-plugin/pkg/cache"
 	"github.com/containers/nydus-storage-plugin/pkg/source"
-	"github.com/containers/nydus-storage-plugin/pkg/utils"
+	manifestutil "github.com/containers/nydus-storage-plugin/pkg/utils"
 )
 
 const (
@@ -245,7 +245,7 @@ func fetchManifestPlatform(ctx context.Context, fetcher remotes.Fetcher, desc oc
 		if err != nil {
 			return ocispec.Manifest{}, err
 		}
-		if err := utils.ValidateMediaType(p, desc.MediaType); err != nil {
+		if err := manifestutil.ValidateMediaType(p, desc.MediaType); err != nil {
 			return ocispec.Manifest{}, err
 		}
 		if err := json.Unmarshal(p, &manifest); err != nil {
@@ -258,7 +258,7 @@ func fetchManifestPlatform(ctx context.Context, fetcher remotes.Fetcher, desc oc
 		if err != nil {
 			return ocispec.Manifest{}, err
 		}
-		if err := utils.ValidateMediaType(p, desc.MediaType); err != nil {
+		if err := manifestutil.ValidateMediaType(p, desc.MediaType); err != nil {
 			return ocispec.Manifest{}, err
 		}
 		if err = json.Unmarshal(p, &index); err != nil {

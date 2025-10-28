@@ -15,5 +15,5 @@ type mountFunc func(source, target, fstype string, flags uintptr, data string) e
 type unmountFunc func(target string, flags int) error
 
 // On non-linux, provide stubs to satisfy compilation; tests override these when needed.
-var unixMount mountFunc = func(source, target, fstype string, flags uintptr, data string) error { return nil }
-var unixUnmount unmountFunc = func(target string, flags int) error { return nil }
+var unixMount mountFunc = func(_, _, _ string, _ uintptr, _ string) error { return nil }
+var unixUnmount unmountFunc = func(_ string, _ int) error { return nil }

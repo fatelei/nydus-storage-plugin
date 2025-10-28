@@ -10,9 +10,8 @@ import (
 func TestLayerNodeLookupUnknownNameENOENT(t *testing.T) {
 	n := &layerNode{fs: &fs{}}
 	var out fuse.EntryOut
-_, eno := n.Lookup(context.Background(), "unknown", &out)
+	_, eno := n.Lookup(context.Background(), "unknown", &out)
 	if eno == 0 {
 		t.Fatalf("expected ENOENT for unknown file name")
 	}
 }
-

@@ -7,7 +7,7 @@ import (
 
 func TestBlobNodeOpenReturnsBlobFile(t *testing.T) {
 	n := &blobNode{}
-fh, _, eno := n.Open(context.Background(), 0)
+	fh, _, eno := n.Open(context.Background(), 0)
 	if eno != 0 {
 		t.Fatalf("Open errno=%d", eno)
 	}

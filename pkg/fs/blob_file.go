@@ -14,7 +14,7 @@ type blobFile struct {
 
 var _ = (fusefs.FileReader)((*blobFile)(nil))
 
-func (f *blobFile) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
+func (f *blobFile) Read(_ context.Context, _ []byte, _ int64) (fuse.ReadResult, syscall.Errno) {
 	//s, err := f.l.ReadAt(dest, off,
 	//	remote.WithContext(ctx),              // Make cancellable
 	//	remote.WithCacheOpts(cache.Direct()), // Do not pollute mem cache
@@ -28,7 +28,7 @@ func (f *blobFile) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadR
 
 var _ = (fusefs.FileGetattrer)((*blobFile)(nil))
 
-func (f *blobFile) Getattr(ctx context.Context, out *fuse.AttrOut) syscall.Errno {
+func (f *blobFile) Getattr(_ context.Context, _ *fuse.AttrOut) syscall.Errno {
 	//layerToAttr(f.l, &out.Attr)
 	return 0
 }

@@ -20,6 +20,6 @@ var _ = (fusefs.InodeEmbedder)((*blobNode)(nil))
 
 var _ = (fusefs.NodeOpener)((*blobNode)(nil))
 
-func (n *blobNode) Open(ctx context.Context, flags uint32) (fh fusefs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+func (n *blobNode) Open(_ context.Context, _ uint32) (fh fusefs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
 	return &blobFile{}, 0, 0
 }
