@@ -154,12 +154,13 @@ func Mount(_ context.Context, mountPoint string, _ string, debug bool, layManage
 		if enableSuidOption {
 			mountOpts.Options = append(mountOpts.Options, "suid") // optional
 		}
+		slog.Info("using fusermount helper", "allowOther", mountOpts.AllowOther)
 	} else {
 		if !hasFusermount() {
-			slog.Debug("fusermount/fusermount3 not installed; trying direct mount")
+			slog.Info("fusermount/fusermount3 not installed; trying direct mount")
 		}
 		if forceDirectMount {
-			slog.Debug("forcing direct mount per option")
+			slog.Info("forcing direct mount per option")
 		}
 		mountOpts.DirectMount = true
 	}

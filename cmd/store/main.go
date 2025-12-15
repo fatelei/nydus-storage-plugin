@@ -6,9 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
-
-	"golang.org/x/sys/unix"
 
 	"github.com/containerd/nydus-snapshotter/cmd/containerd-nydus-grpc/pkg/command"
 	"github.com/containerd/nydus-snapshotter/config"
@@ -83,9 +82,15 @@ func main() {
 			&cli.BoolFlag{Name: "fs-direct-mount", Value: false, Usage: "force direct mount (bypass fusermount)"},
 			&cli.BoolFlag{Name: "fs-mount-suid", Value: false, Usage: "add suid to fusermount mount options"},
 		),
-		Action: func(c *cli.Context) error {
+Action: func(c *cli.Context) error {
 			if err := setupSlog(flags.Args.LogLevel, flags.Args.LogToStdout, flags.Args.LogDir); err != nil {
 				return errors.Wrap(err, "failed to prepare logger")
+			}
+
+			// Fail fast on unsupported platforms to avoid false-positive "mounted" states.
+			if runtime.GOOS != "linux" {
+				slog.ErrorContext(c.Context, "nydus-store requires Linux (FUSE) to mount; current OS unsupported", "GOOS", runtime.GOOS)
+				return errors.New("platform not supported: requires linux with FUSE")
 			}
 
 			var cfg config.Config
@@ -161,9 +166,8 @@ func main() {
 				layManager.ReleaseAll(c.Context)
 				// Try a normal unmount of the FUSE mountpoint
 				if err := syscall.Unmount(mountPoint, 0); err != nil {
-					slog.WarnContext(c.Context, "unmount busy; retry with MNT_DETACH", "err", err)
-					// Retry with lazy unmount to avoid EBUSY due to lingering FDs
-					if derr := unix.Unmount(mountPoint, unix.MNT_DETACH); derr != nil {
+					slog.WarnContext(c.Context, "unmount busy; retry lazy unmount", "err", err)
+					if derr := lazyUnmount(mountPoint); derr != nil {
 						slog.ErrorContext(c.Context, "lazy unmount failed", "err", derr)
 					}
 				}
