@@ -26,7 +26,7 @@ var _ = (fusefs.NodeLookuper)((*rootNode)(nil))
 // Lookup loads manifest and config of specified name (image reference)
 // and returns refnode of the specified name
 func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fusefs.Inode, syscall.Errno) {
-	slog.DebugContext(ctx, "root node lookup", "name", name)
+	slog.InfoContext(ctx, "root node lookup", "name", name)
 	if child := n.GetChild(name); child != nil {
 		switch tn := child.Operations().(type) {
 		case *fusefs.MemSymlink:

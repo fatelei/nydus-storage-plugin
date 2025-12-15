@@ -36,6 +36,7 @@ var (
 	// Mount behavior toggles
 	defaultAllowOther bool = true
 	forceDirectMount  bool = false
+	enableSuidOption  bool = false
 )
 
 // Helpers to expose defaults for CLI parsing
@@ -68,6 +69,11 @@ func WithDirectMount(b bool) MountOption {
 	return func() {
 		forceDirectMount = b
 	}
+}
+
+// WithMountSuid toggles "suid" mount option when using fusermount.
+func WithMountSuid(b bool) MountOption {
+	return func() { enableSuidOption = b }
 }
 
 type releasable interface {
@@ -143,8 +149,10 @@ func Mount(_ context.Context, mountPoint string, _ string, debug bool, layManage
 		Debug:      debug,
 	}
 	// Detect fusermount or fusermount3; fallback to direct mount if neither present
-	if hasFusermount() && !forceDirectMount {
-		mountOpts.Options = []string{"suid"} // allow setuid inside container
+if hasFusermount() && !forceDirectMount {
+		if enableSuidOption {
+			mountOpts.Options = append(mountOpts.Options, "suid") // optional
+		}
 	} else {
 		if !hasFusermount() {
 			slog.Debug("fusermount/fusermount3 not installed; trying direct mount")

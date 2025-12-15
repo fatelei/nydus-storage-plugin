@@ -28,7 +28,7 @@ var _ = (fusefs.NodeRmdirer)((*refNode)(nil))
 
 func (n *refNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fusefs.Inode, syscall.Errno) {
 	// lookup on memory nodes
-	slog.DebugContext(ctx, "ref node lookup", "name", name)
+	slog.InfoContext(ctx, "ref node lookup", "name", name)
 	if child := n.GetChild(name); child != nil {
 		switch tn := child.Operations().(type) {
 		case *layerNode:

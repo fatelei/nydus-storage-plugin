@@ -41,7 +41,7 @@ func (n *layerNode) Create(ctx context.Context, name string, _ uint32, _ uint32,
 
 // Lookup routes to the target file stored in the pool, based on the specified file name.
 func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fusefs.Inode, syscall.Errno) {
-	slog.DebugContext(ctx, "layer node lookup", "name", name)
+	slog.InfoContext(ctx, "layer node lookup", "name", name)
 	switch name {
 	case layerInfoLink:
 		info, err := n.fs.layManager.GetLayerInfo(ctx, n.refNode.ref, n.digest)
@@ -103,7 +103,7 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 
 		// Only Nydus meta layers expose a diff directory via bind mount
 		if !l.IsMetaLayer || l.MountFailed {
-			slog.DebugContext(ctx, "not a nydus meta layer; no diff provided", "digest", n.digest.String())
+			slog.InfoContext(ctx, "not a nydus meta layer; no diff provided", "digest", n.digest.String())
 			return nil, syscall.ENOENT
 		}
 
@@ -131,7 +131,7 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 			return cn
 		})
 	case layerUseFile:
-		slog.DebugContext(ctx, "use file referred; returning ENOENT for reference mgmt")
+		slog.InfoContext(ctx, "use file referred; returning ENOENT for reference mgmt")
 		return nil, syscall.ENOENT
 	default:
 		slog.WarnContext(ctx, "unknown filename", "name", name)
