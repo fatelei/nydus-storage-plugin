@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/containerd/nydus-snapshotter/cmd/containerd-nydus-grpc/pkg/command"
 	"github.com/containerd/nydus-snapshotter/config"
 	"github.com/containerd/nydus-snapshotter/pkg/errdefs"
@@ -155,10 +157,15 @@ func main() {
 				return err
 			}
 			defer func() {
+				// Best-effort: release bind mounts first
 				layManager.ReleaseAll(c.Context)
-				err := syscall.Unmount(mountPoint, 0)
-				if err != nil {
-					slog.ErrorContext(c.Context, "unmount failed", "err", err)
+				// Try a normal unmount of the FUSE mountpoint
+				if err := syscall.Unmount(mountPoint, 0); err != nil {
+					slog.WarnContext(c.Context, "unmount busy; retry with MNT_DETACH", "err", err)
+					// Retry with lazy unmount to avoid EBUSY due to lingering FDs
+					if derr := unix.Unmount(mountPoint, unix.MNT_DETACH); derr != nil {
+						slog.ErrorContext(c.Context, "lazy unmount failed", "err", derr)
+					}
 				}
 				slog.InfoContext(c.Context, "Exiting")
 			}()
