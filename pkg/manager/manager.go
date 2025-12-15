@@ -150,12 +150,17 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 	}
 
 	// Download nydus bootstrap layer and mount it.
-	if _, ok := target.Annotations[label.NydusMetaLayer]; ok {
+	// Support both legacy and new nydus bootstrap annotations
+	isNydusBootstrap := target.Annotations != nil && (
+		target.Annotations[label.NydusMetaLayer] == "true" ||
+		target.Annotations["containerd.io/snapshot/nydus-bootstrap"] == "true")
+
+	if isNydusBootstrap {
 		target.Annotations[label.CRIImageRef] = refspec.String()
 		target.Annotations[label.CRILayerDigest] = target.Digest.String()
 		layer.IsMetaLayer = true
 
-		if _, ok = r.nydusMetaLayer.Load(snapshotID); ok {
+		if _, exists := r.nydusMetaLayer.Load(snapshotID); exists {
 			slog.WarnContext(ctx, "nydus duplicate mount meta layer", "ref", refspec.String(), "digest", target.Digest.String())
 			return &layer, nil
 		}
