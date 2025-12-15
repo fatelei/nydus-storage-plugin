@@ -91,7 +91,7 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 		}
 		if name == blobLink {
 			sAttr := layerToAttr(&l.Descriptor, &out.Attr)
-			cn := &blobNode{l: &l.Descriptor}
+			cn := &blobNode{l: &l.Descriptor, fs: n.fs, ref: n.refNode.ref}
 			copyAttr(&cn.attr, &out.Attr)
 			return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
 				out.Ino = uint64(ino)

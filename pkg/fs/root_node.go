@@ -63,20 +63,6 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 			sAttr.Ino = uint64(ino)
 			return n.NewInode(ctx, cn, sAttr)
 		})
-	case "test-nydus-store-alive":
-		// Test file to verify Podman is accessing our FUSE mount
-		slog.InfoContext(ctx, "TEST: Podman accessed our test file!", "name", name)
-		sAttr := defaultFileAttr(uint64(len("nydus-storage-plugin-is-alive")), &out.Attr)
-		cn := &fusefs.MemRegularFile{
-			Data: []byte("nydus-storage-plugin-is-alive"),
-		}
-		copyAttr(&cn.Attr, &out.Attr)
-		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
-			out.Ino = uint64(ino)
-			cn.Attr.Ino = uint64(ino)
-			sAttr.Ino = uint64(ino)
-			return n.NewInode(ctx, cn, sAttr)
-		})
 	}
 
 	// Handle system files (starting with .) gracefully

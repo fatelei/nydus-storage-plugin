@@ -379,6 +379,9 @@ func (r *LayerManager) RefRoot() string {
 	return r.refPool.root()
 }
 
+// Hosts returns the registry hosts provider.
+func (r *LayerManager) Hosts() source.RegistryHosts { return r.hosts }
+
 func colon2dash(s string) string {
 	return strings.ReplaceAll(s, ":", "-")
 }
