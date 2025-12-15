@@ -6,12 +6,20 @@ import (
 	"context"
 	"encoding/base64"
 	"log/slog"
+	"strings"
 	"syscall"
 
 	"github.com/containerd/containerd/reference"
 	fusefs "github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 // rootnode is the mountpoint node of nydus-store.
 type rootNode struct {
@@ -71,10 +79,40 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 		})
 	}
 
-	refBytes, err := base64.StdEncoding.DecodeString(name)
+	// Handle system files (starting with .) gracefully
+	if strings.HasPrefix(name, ".") {
+		slog.DebugContext(ctx, "ignoring system file", "name", name)
+		return nil, syscall.ENOENT // File not found (better than EINVAL)
+	}
+
+	// Try multiple base64 encodings
+	var refBytes []byte
+	var err error
+
+	// Try standard base64 first
+	refBytes, err = base64.StdEncoding.DecodeString(name)
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to decode ref base64", "name", name, "err", err)
-		return nil, syscall.EINVAL
+		// Try URL-safe base64 (without padding)
+		refBytes, err = base64.RawURLEncoding.DecodeString(name)
+	}
+	if err != nil {
+		// Try raw standard base64 (without padding)
+		refBytes, err = base64.RawStdEncoding.DecodeString(name)
+	}
+
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to decode base64 reference",
+			"name", name,
+			"name_len", len(name),
+			"err", err)
+		// Try to decode as much as possible for debugging
+		if len(name) >= 4 {
+			partial := name[:min(len(name), 32)]
+			if partialBytes, partialErr := base64.StdEncoding.DecodeString(partial + "==="); partialErr == nil {
+				slog.InfoContext(ctx, "partial decode result", "partial", partial, "decoded", string(partialBytes))
+			}
+		}
+		return nil, syscall.ENOENT // File not found (better than EINVAL)
 	}
 	ref := string(refBytes)
 	var refSpec reference.Spec
