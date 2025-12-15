@@ -323,13 +323,18 @@ func (r *LayerManager) ReleaseAll(ctx context.Context) {
 // left over from previous crashes. It walks <root>/store/*/*/diff and tries to unmount.
 func (r *LayerManager) RecoverOrphanMounts(ctx context.Context) error {
 	storeRoot := filepath.Join(r.rootDir, "store")
+	slog.InfoContext(ctx, "RecoverOrphanMounts checking store", "storeRoot", storeRoot)
+
 	ents, err := os.ReadDir(storeRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
+			slog.InfoContext(ctx, "store directory does not exist, skipping recovery", "storeRoot", storeRoot)
 			return nil
 		}
 		return err
 	}
+
+	slog.InfoContext(ctx, "found entries in store", "count", len(ents), "storeRoot", storeRoot)
 	for _, e := range ents {
 		if !e.IsDir() {
 			continue

@@ -23,6 +23,7 @@ var _ = (fusefs.InodeEmbedder)((*rootNode)(nil))
 
 var _ = (fusefs.NodeLookuper)((*rootNode)(nil))
 var _ = (fusefs.NodeReaddirer)((*rootNode)(nil))
+var _ = (fusefs.NodeUnlinker)((*rootNode)(nil))
 
 // Lookup loads manifest and config of specified name (image reference)
 // and returns refnode of the specified name
@@ -47,6 +48,20 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 		// filesystem cache.
 		sAttr := defaultLinkAttr(&out.Attr)
 		cn := &fusefs.MemSymlink{Data: []byte(n.fs.layManager.RefRoot())}
+		copyAttr(&cn.Attr, &out.Attr)
+		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
+			out.Ino = uint64(ino)
+			cn.Attr.Ino = uint64(ino)
+			sAttr.Ino = uint64(ino)
+			return n.NewInode(ctx, cn, sAttr)
+		})
+	case "test-nydus-store-alive":
+		// Test file to verify Podman is accessing our FUSE mount
+		slog.InfoContext(ctx, "TEST: Podman accessed our test file!", "name", name)
+		sAttr := defaultFileAttr(uint64(len("nydus-storage-plugin-is-alive")), &out.Attr)
+		cn := &fusefs.MemRegularFile{
+			Data: []byte("nydus-storage-plugin-is-alive"),
+		}
 		copyAttr(&cn.Attr, &out.Attr)
 		return n.fs.newInodeWithID(ctx, func(ino uint32) fusefs.InodeEmbedder {
 			out.Ino = uint64(ino)
@@ -89,10 +104,26 @@ func (n *rootNode) Readdir(ctx context.Context) (fusefs.DirStream, syscall.Errno
 	// Start with the pool symlink
 	entries := []fuse.DirEntry{
 		{Name: poolLink, Mode: fuse.S_IFLNK},
+		{Name: "test-nydus-store-alive", Mode: fuse.S_IFREG},
 	}
 
 	// TODO: Add existing image references
 	// Currently, we only show the pool symlink since that's what's always available
 
 	return fusefs.NewListDirStream(entries), 0
+}
+
+// Unlink prevents deletion of critical system entries like "pool"
+func (n *rootNode) Unlink(ctx context.Context, name string) syscall.Errno {
+	slog.InfoContext(ctx, "root node unlink attempt", "name", name)
+
+	// Prevent deletion of the pool symlink
+	if name == poolLink {
+		slog.WarnContext(ctx, "attempted to delete protected pool symlink", "name", name)
+		return syscall.EPERM // Operation not permitted
+	}
+
+	// For other files, we don't support deletion
+	slog.InfoContext(ctx, "unlink not supported", "name", name)
+	return syscall.EPERM
 }
