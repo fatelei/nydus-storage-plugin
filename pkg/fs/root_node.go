@@ -22,6 +22,7 @@ type rootNode struct {
 var _ = (fusefs.InodeEmbedder)((*rootNode)(nil))
 
 var _ = (fusefs.NodeLookuper)((*rootNode)(nil))
+var _ = (fusefs.NodeReaddirer)((*rootNode)(nil))
 
 // Lookup loads manifest and config of specified name (image reference)
 // and returns refnode of the specified name
@@ -80,4 +81,18 @@ func (n *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 		sAttr.Ino = uint64(ino)
 		return n.NewInode(ctx, child, sAttr)
 	})
+}
+
+// Readdir enumerates entries in the root directory.
+// Shows the "pool" symlink and any cached image references.
+func (n *rootNode) Readdir(ctx context.Context) (fusefs.DirStream, syscall.Errno) {
+	// Start with the pool symlink
+	entries := []fuse.DirEntry{
+		{Name: poolLink, Mode: fuse.S_IFLNK},
+	}
+
+	// TODO: Add existing image references
+	// Currently, we only show the pool symlink since that's what's always available
+
+	return fusefs.NewListDirStream(entries), 0
 }
