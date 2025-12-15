@@ -69,7 +69,7 @@ func setupSlog(level string, toStdout bool, logDir string) error {
 
 func main() {
 	flags := command.NewFlags()
-app := &cli.App{
+	app := &cli.App{
 		Name:    "crio nydus store",
 		Usage:   "crio nydus store plugin",
 		Version: "0.0.0",
@@ -78,7 +78,7 @@ app := &cli.App{
 			&cli.StringFlag{Name: "fs-dir-mode", Usage: "octal dir mode (e.g. 0500)"},
 			&cli.StringFlag{Name: "fs-link-mode", Usage: "octal symlink mode (e.g. 0400)"},
 			&cli.BoolFlag{Name: "fs-allow-other", Value: true, Usage: "enable allow_other on FUSE mount"},
-&cli.BoolFlag{Name: "fs-direct-mount", Value: false, Usage: "force direct mount (bypass fusermount)"},
+			&cli.BoolFlag{Name: "fs-direct-mount", Value: false, Usage: "force direct mount (bypass fusermount)"},
 			&cli.BoolFlag{Name: "fs-mount-suid", Value: false, Usage: "add suid to fusermount mount options"},
 		),
 		Action: func(c *cli.Context) error {
@@ -109,7 +109,7 @@ app := &cli.App{
 				panic(err)
 			}
 
-// Parse optional FS modes
+			// Parse optional FS modes
 			fileMode := fs.DefaultFileMode()
 			dirMode := fs.DefaultDirMode()
 			linkMode := fs.DefaultLinkMode()
@@ -148,7 +148,7 @@ app := &cli.App{
 				layManager,
 				fs.WithModes(fileMode, dirMode, linkMode),
 				fs.WithAllowOther(c.Bool("fs-allow-other")),
-fs.WithDirectMount(c.Bool("fs-direct-mount")),
+				fs.WithDirectMount(c.Bool("fs-direct-mount")),
 				fs.WithMountSuid(c.Bool("fs-mount-suid")),
 			); err != nil {
 				slog.ErrorContext(c.Context, "failed to mount fs", "mountPoint", mountPoint, "err", err)

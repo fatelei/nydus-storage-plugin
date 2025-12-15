@@ -176,10 +176,9 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 	// Support both legacy and new nydus bootstrap annotations
 	slog.InfoContext(ctx, "checking if layer is nydus bootstrap",
 		"digest", target.Digest.String(),
-	"annotations", target.Annotations)
+		"annotations", target.Annotations)
 
-	isNydusBootstrap := target.Annotations != nil && (
-		target.Annotations[label.NydusMetaLayer] == "true" ||
+	isNydusBootstrap := target.Annotations != nil && (target.Annotations[label.NydusMetaLayer] == "true" ||
 		target.Annotations["containerd.io/snapshot/nydus-bootstrap"] == "true")
 
 	slog.InfoContext(ctx, "nydus bootstrap check result",

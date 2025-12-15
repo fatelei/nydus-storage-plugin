@@ -150,7 +150,7 @@ func Mount(_ context.Context, mountPoint string, _ string, debug bool, layManage
 		Debug:      debug,
 	}
 	// Detect fusermount or fusermount3; fallback to direct mount if neither present
-if hasFusermount() && !forceDirectMount {
+	if hasFusermount() && !forceDirectMount {
 		if enableSuidOption {
 			mountOpts.Options = append(mountOpts.Options, "suid") // optional
 		}
