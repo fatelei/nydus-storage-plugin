@@ -132,6 +132,14 @@ app := &cli.App{
 			// Recover orphan bind mounts from previous crashes
 			_ = layManager.RecoverOrphanMounts(c.Context)
 
+			slog.InfoContext(c.Context, "Starting FUSE mount",
+				"mountPoint", mountPoint,
+				"rootDir", flags.Args.RootDir,
+				"fileMode", fmt.Sprintf("0%o", fileMode),
+				"dirMode", fmt.Sprintf("0%o", dirMode),
+				"linkMode", fmt.Sprintf("0%o", linkMode),
+				"allowOther", c.Bool("fs-allow-other"))
+
 			if err := fs.Mount(
 				c.Context,
 				mountPoint,

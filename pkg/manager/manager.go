@@ -47,6 +47,12 @@ type MountLayer struct {
 var ErrMountMetaLayerFailed = errors.New("mount meta layer failed")
 
 func NewLayerManager(ctx context.Context, rootDir string, hosts source.RegistryHosts, cfg *config.Config) (*LayerManager, error) {
+	slog.InfoContext(ctx, "NewLayerManager called",
+		"rootDir", rootDir,
+		"nydusdBinaryPath", cfg.NydusdBinaryPath,
+		"daemonMode", cfg.DaemonMode,
+		"cacheDir", cfg.CacheDir)
+
 	verifier, err := signature.NewVerifier(cfg.PublicKeyFile, cfg.ValidateSignature)
 	if err != nil {
 		return nil, err
@@ -125,18 +131,35 @@ func (r *LayerManager) GetLayerInfo(ctx context.Context, refspec reference.Spec,
 }
 
 func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.Spec, snapshotID string, digest digest.Digest) (*MountLayer, error) {
+	slog.InfoContext(ctx, "ResolverMetaLayer called",
+		"ref", refspec.String(),
+		"snapshotID", snapshotID,
+		"digest", digest.String())
+
 	// get manifest from cache.
 	manifest, _, err := r.refPool.loadRef(ctx, refspec)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get manifest and config: %w", err)
 	}
+
+	slog.InfoContext(ctx, "manifest layers count", "count", len(manifest.Layers))
+
 	var target ocispec.Descriptor
 	var found bool
-	for _, l := range manifest.Layers {
+	for i, l := range manifest.Layers {
+		slog.InfoContext(ctx, "checking layer",
+			"index", i,
+			"digest", l.Digest.String(),
+			"mediaType", l.MediaType,
+			"annotations", l.Annotations)
 		if l.Digest == digest {
 			l := l
 			found = true
 			target = l
+			slog.InfoContext(ctx, "found target layer",
+				"digest", digest.String(),
+				"mediaType", l.MediaType,
+				"annotations", l.Annotations)
 			break
 		}
 	}
@@ -151,9 +174,26 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 
 	// Download nydus bootstrap layer and mount it.
 	// Support both legacy and new nydus bootstrap annotations
+	slog.InfoContext(ctx, "checking if layer is nydus bootstrap",
+		"digest", target.Digest.String(),
+	"annotations", target.Annotations)
+
 	isNydusBootstrap := target.Annotations != nil && (
 		target.Annotations[label.NydusMetaLayer] == "true" ||
 		target.Annotations["containerd.io/snapshot/nydus-bootstrap"] == "true")
+
+	slog.InfoContext(ctx, "nydus bootstrap check result",
+		"digest", target.Digest.String(),
+		"isBootstrap", isNydusBootstrap,
+		"hasAnnotations", target.Annotations != nil)
+
+	if target.Annotations != nil {
+		for k, v := range target.Annotations {
+			slog.InfoContext(ctx, "layer annotation",
+				"key", k,
+				"value", v)
+		}
+	}
 
 	if isNydusBootstrap {
 		target.Annotations[label.CRIImageRef] = refspec.String()
