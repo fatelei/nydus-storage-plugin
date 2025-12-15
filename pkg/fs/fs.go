@@ -28,10 +28,11 @@ const (
 
 // Configurable FS modes (defaults preserved)
 var (
-	defaultLinkMode uint32 = syscall.S_IFLNK | 0400 // -r--------
-	defaultDirMode  uint32 = syscall.S_IFDIR | 0500 // dr-x------
-	defaultFileMode uint32 = 0400                   // -r--------
-	layerFileMode   uint32 = 0400                   // -r--------
+	// Permission bits only (no file type bits). File type is set via fuse StableAttr.
+	defaultLinkMode uint32 = 0400 // -r-------- (symlink perms are largely ignored by kernels)
+	defaultDirMode  uint32 = 0500 // dr-x------
+	defaultFileMode uint32 = 0400 // -r--------
+	layerFileMode   uint32 = 0400 // -r--------
 
 	// Mount behavior toggles
 	defaultAllowOther bool = true
