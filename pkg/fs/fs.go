@@ -32,6 +32,10 @@ var (
 	defaultDirMode  uint32 = syscall.S_IFDIR | 0500 // dr-x------
 	defaultFileMode uint32 = 0400                   // -r--------
 	layerFileMode   uint32 = 0400                   // -r--------
+
+	// Mount behavior toggles
+	defaultAllowOther bool = true
+	forceDirectMount  bool = false
 )
 
 // Helpers to expose defaults for CLI parsing
@@ -49,6 +53,20 @@ func WithModes(fileMode, dirMode, linkMode uint32) MountOption {
 		defaultDirMode = dirMode
 		defaultLinkMode = linkMode
 		layerFileMode = fileMode
+	}
+}
+
+// WithAllowOther toggles the allow_other mount option.
+func WithAllowOther(b bool) MountOption {
+	return func() {
+		defaultAllowOther = b
+	}
+}
+
+// WithDirectMount forces direct mount, bypassing fusermount helpers.
+func WithDirectMount(b bool) MountOption {
+	return func() {
+		forceDirectMount = b
 	}
 }
 
@@ -120,15 +138,20 @@ func Mount(_ context.Context, mountPoint string, _ string, debug bool, layManage
 		NullPermissions: true,
 	})
 	mountOpts := &fuse.MountOptions{
-		AllowOther: true, // allow users other than root&mounter to access fs
+		AllowOther: defaultAllowOther, // allow users other than root&mounter to access fs
 		FsName:     "nydusstore",
 		Debug:      debug,
 	}
 	// Detect fusermount or fusermount3; fallback to direct mount if neither present
-	if hasFusermount() {
+	if hasFusermount() && !forceDirectMount {
 		mountOpts.Options = []string{"suid"} // allow setuid inside container
 	} else {
-		slog.Debug("fusermount/fusermount3 not installed; trying direct mount")
+		if !hasFusermount() {
+			slog.Debug("fusermount/fusermount3 not installed; trying direct mount")
+		}
+		if forceDirectMount {
+			slog.Debug("forcing direct mount per option")
+		}
 		mountOpts.DirectMount = true
 	}
 	server, err := fuse.NewServer(rawFS, mountPoint, mountOpts)

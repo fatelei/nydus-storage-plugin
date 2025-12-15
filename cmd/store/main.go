@@ -69,7 +69,7 @@ func setupSlog(level string, toStdout bool, logDir string) error {
 
 func main() {
 	flags := command.NewFlags()
-	app := &cli.App{
+app := &cli.App{
 		Name:    "crio nydus store",
 		Usage:   "crio nydus store plugin",
 		Version: "0.0.0",
@@ -77,6 +77,8 @@ func main() {
 			&cli.StringFlag{Name: "fs-file-mode", Usage: "octal file mode for files (e.g. 0400)"},
 			&cli.StringFlag{Name: "fs-dir-mode", Usage: "octal dir mode (e.g. 0500)"},
 			&cli.StringFlag{Name: "fs-link-mode", Usage: "octal symlink mode (e.g. 0400)"},
+			&cli.BoolFlag{Name: "fs-allow-other", Value: true, Usage: "enable allow_other on FUSE mount"},
+			&cli.BoolFlag{Name: "fs-direct-mount", Value: false, Usage: "force direct mount (bypass fusermount)"},
 		),
 		Action: func(c *cli.Context) error {
 			if err := setupSlog(flags.Args.LogLevel, flags.Args.LogToStdout, flags.Args.LogDir); err != nil {
@@ -106,7 +108,7 @@ func main() {
 				panic(err)
 			}
 
-			// Parse optional FS modes
+// Parse optional FS modes
 			fileMode := fs.DefaultFileMode()
 			dirMode := fs.DefaultDirMode()
 			linkMode := fs.DefaultLinkMode()
@@ -129,7 +131,16 @@ func main() {
 			// Recover orphan bind mounts from previous crashes
 			_ = layManager.RecoverOrphanMounts(c.Context)
 
-			if err := fs.Mount(c.Context, mountPoint, flags.Args.RootDir, true, layManager, fs.WithModes(fileMode, dirMode, linkMode)); err != nil {
+			if err := fs.Mount(
+				c.Context,
+				mountPoint,
+				flags.Args.RootDir,
+				true,
+				layManager,
+				fs.WithModes(fileMode, dirMode, linkMode),
+				fs.WithAllowOther(c.Bool("fs-allow-other")),
+				fs.WithDirectMount(c.Bool("fs-direct-mount")),
+			); err != nil {
 				slog.ErrorContext(c.Context, "failed to mount fs", "mountPoint", mountPoint, "err", err)
 				return err
 			}
