@@ -101,9 +101,11 @@ func (n *layerNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 			})
 		}
 
-		// Only Nydus meta layers expose a diff directory via bind mount
+		// Only Nydus layers expose a diff directory.
+		// - bootstrap layer: diff is backed by a bind mount to the nydusd mountpoint
+		// - data blob layers: diff is an intentionally empty directory (to satisfy Podman additional layer store expectations)
 		if !l.IsMetaLayer || l.MountFailed {
-			slog.InfoContext(ctx, "not a nydus meta layer; no diff provided", "digest", n.digest.String())
+			slog.InfoContext(ctx, "not a nydus layer; no diff provided", "digest", n.digest.String())
 			return nil, syscall.ENOENT
 		}
 

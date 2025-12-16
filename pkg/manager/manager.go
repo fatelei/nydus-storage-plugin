@@ -184,22 +184,29 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		"annotations", target.Annotations)
 
 	isNydusLayer := false
+	isNydusBootstrap := false
+	isNydusBlob := false
 	if target.Annotations != nil {
 		if _, ok := target.Annotations[label.NydusMetaLayer]; ok {
 			isNydusLayer = true
-		}
-		if _, ok := target.Annotations[label.NydusDataLayer]; ok {
-			isNydusLayer = true
+			isNydusBootstrap = true
 		}
 		// Legacy compatibility (same key as label.NydusMetaLayer in some older builds)
 		if _, ok := target.Annotations["containerd.io/snapshot/nydus-bootstrap"]; ok {
 			isNydusLayer = true
+			isNydusBootstrap = true
+		}
+		if _, ok := target.Annotations[label.NydusDataLayer]; ok {
+			isNydusLayer = true
+			isNydusBlob = true
 		}
 	}
 
 	slog.InfoContext(ctx, "nydus layer check result",
 		"digest", target.Digest.String(),
 		"isNydusLayer", isNydusLayer,
+		"isNydusBootstrap", isNydusBootstrap,
+		"isNydusBlob", isNydusBlob,
 		"hasAnnotations", target.Annotations != nil)
 
 	if target.Annotations != nil {
@@ -215,6 +222,16 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		target.Annotations[label.CRILayerDigest] = target.Digest.String()
 		layer.IsMetaLayer = true
 
+		// For nydus data blob layers, we intentionally DO NOT provide a bind-mounted diff.
+		// Podman still requires the diff entry to exist, so the FUSE layer will serve an empty directory.
+		if isNydusBlob && !isNydusBootstrap {
+			slog.InfoContext(ctx, "nydus data blob layer detected; serving empty diff directory",
+				"digest", target.Digest.String(),
+				"snapshotID", snapshotID)
+			return &layer, nil
+		}
+
+		// Bootstrap layer: ensure nydusd mount exists and bind-mount its mountpoint to diff.
 		bindKey := snapshotID + ":" + target.Digest.String()
 		if _, exists := r.nydusMetaLayer.Load(bindKey); exists {
 			slog.DebugContext(ctx, "nydus duplicate bind mount", "ref", refspec.String(), "digest", target.Digest.String())
@@ -231,7 +248,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 
 		// Ensure the nydusd mount exists once per snapshotID.
 		if _, mounted := r.mountedSnapshots.Load(snapshotID); !mounted {
-			// Download nydus bootstrap layer to disk.
+			// Download nydus bootstrap to disk.
 			err = r.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: snapshotID}, target.Annotations)
 			if err != nil && !strings.Contains(err.Error(), "file exists") {
 				slog.ErrorContext(ctx, "download snapshot files failed", "err", err)
