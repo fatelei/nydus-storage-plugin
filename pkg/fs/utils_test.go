@@ -23,26 +23,26 @@ func TestUtilsCopyAttr(t *testing.T) {
 func TestUtilsLayerToAttr(t *testing.T) {
 	var out fuse.Attr
 	s := layerToAttr(&ocispec.Descriptor{Size: 8192}, &out)
-	if out.Mode != layerFileMode {
+	if out.Mode != (fuse.S_IFREG | layerFileMode) {
 		t.Fatalf("unexpected mode: %o", out.Mode)
 	}
-	if s.Mode != out.Mode {
-		t.Fatalf("stable mode mismatch")
+	if s.Mode != fuse.S_IFREG {
+		t.Fatalf("stable mode mismatch: got %o", s.Mode)
 	}
 }
 
 func TestUtilsDefaultFileDirLinkAttr(t *testing.T) {
 	var out fuse.Attr
 	s1 := defaultFileAttr(100, &out)
-	if out.Mode != defaultFileMode || s1.Mode != out.Mode {
-		t.Fatalf("defaultFileAttr unexpected")
+	if out.Mode != (fuse.S_IFREG | defaultFileMode) || s1.Mode != fuse.S_IFREG {
+		t.Fatalf("defaultFileAttr unexpected: out.Mode=%o stable.Mode=%o", out.Mode, s1.Mode)
 	}
 	s2 := defaultDirAttr(&out)
-	if out.Mode != defaultDirMode || s2.Mode != out.Mode {
-		t.Fatalf("defaultDirAttr unexpected")
+	if out.Mode != (fuse.S_IFDIR | defaultDirMode) || s2.Mode != fuse.S_IFDIR {
+		t.Fatalf("defaultDirAttr unexpected: out.Mode=%o stable.Mode=%o", out.Mode, s2.Mode)
 	}
 	s3 := defaultLinkAttr(&out)
-	if out.Mode != defaultLinkMode || s3.Mode != out.Mode {
-		t.Fatalf("defaultLinkAttr unexpected")
+	if out.Mode != (fuse.S_IFLNK | defaultLinkMode) || s3.Mode != fuse.S_IFLNK {
+		t.Fatalf("defaultLinkAttr unexpected: out.Mode=%o stable.Mode=%o", out.Mode, s3.Mode)
 	}
 }

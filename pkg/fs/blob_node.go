@@ -25,6 +25,9 @@ var _ = (fusefs.InodeEmbedder)((*blobNode)(nil))
 var _ = (fusefs.NodeOpener)((*blobNode)(nil))
 
 func (n *blobNode) Open(ctx context.Context, _ uint32) (fh fusefs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+	if n == nil || n.fs == nil || n.fs.layManager == nil || n.l == nil {
+		return nil, 0, syscall.EIO
+	}
 	hostsFn := func(_ string) ([]docker.RegistryHost, error) {
 		return n.fs.layManager.Hosts()(n.ref)
 	}

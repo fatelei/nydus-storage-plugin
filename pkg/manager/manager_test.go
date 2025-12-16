@@ -157,7 +157,7 @@ func TestReleaseDecrementsAndUnmountsAndCleansMaps(t *testing.T) {
 	snapshotID := "snap-1"
 	// prepare counters
 	lm.refCounter[refspec.String()] = map[string]int{dgst.String(): 1}
-	lm.nydusMetaLayer.Store(snapshotID, "/fake/target")
+	lm.nydusMetaLayer.Store(snapshotID+":"+dgst.String(), "/fake/target")
 	lm.refPool.refcounter[refspec.String()] = &releaser{count: 1, release: func() {}}
 
 	var unmounted []string
@@ -184,7 +184,7 @@ func TestReleaseDecrementsAndUnmountsAndCleansMaps(t *testing.T) {
 	if _, ok := lm.refCounter[refspec.String()]; ok {
 		t.Errorf("ref entry not removed from refCounter")
 	}
-	if _, ok := lm.nydusMetaLayer.Load(snapshotID); ok {
+	if _, ok := lm.nydusMetaLayer.Load(snapshotID + ":" + dgst.String()); ok {
 		t.Errorf("nydusMetaLayer entry not deleted")
 	}
 }

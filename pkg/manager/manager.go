@@ -114,10 +114,15 @@ type LayerManager struct {
 	refPool *refPool
 	hosts   source.RegistryHosts
 
-	refCounter     map[string]map[string]int
-	rootDir        string
+	refCounter map[string]map[string]int
+	rootDir    string
+
+	// mountedSnapshots tracks snapshot IDs that already have an active nydusd mount.
+	mountedSnapshots sync.Map
+	// nydusMetaLayer tracks per-layer bind mounts (key: snapshotID+":"+layerDigest -> targetPath).
 	nydusMetaLayer sync.Map
-	nydusFs        fsDriver
+
+	nydusFs fsDriver
 
 	mu sync.Mutex
 }
@@ -172,18 +177,29 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		IsMetaLayer: false,
 	}
 
-	// Download nydus bootstrap layer and mount it.
-	// Support both legacy and new nydus bootstrap annotations
-	slog.InfoContext(ctx, "checking if layer is nydus bootstrap",
+	// Download nydus bootstrap/blob layer and mount it.
+	// NOTE: containers/image/nydus may set these annotations to non-"true" values; presence is what matters.
+	slog.InfoContext(ctx, "checking if layer is nydus layer",
 		"digest", target.Digest.String(),
 		"annotations", target.Annotations)
 
-	isNydusBootstrap := target.Annotations != nil && (target.Annotations[label.NydusMetaLayer] == "true" ||
-		target.Annotations["containerd.io/snapshot/nydus-bootstrap"] == "true")
+	isNydusLayer := false
+	if target.Annotations != nil {
+		if _, ok := target.Annotations[label.NydusMetaLayer]; ok {
+			isNydusLayer = true
+		}
+		if _, ok := target.Annotations[label.NydusDataLayer]; ok {
+			isNydusLayer = true
+		}
+		// Legacy compatibility (same key as label.NydusMetaLayer in some older builds)
+		if _, ok := target.Annotations["containerd.io/snapshot/nydus-bootstrap"]; ok {
+			isNydusLayer = true
+		}
+	}
 
-	slog.InfoContext(ctx, "nydus bootstrap check result",
+	slog.InfoContext(ctx, "nydus layer check result",
 		"digest", target.Digest.String(),
-		"isBootstrap", isNydusBootstrap,
+		"isNydusLayer", isNydusLayer,
 		"hasAnnotations", target.Annotations != nil)
 
 	if target.Annotations != nil {
@@ -194,13 +210,14 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 		}
 	}
 
-	if isNydusBootstrap {
+	if isNydusLayer {
 		target.Annotations[label.CRIImageRef] = refspec.String()
 		target.Annotations[label.CRILayerDigest] = target.Digest.String()
 		layer.IsMetaLayer = true
 
-		if _, exists := r.nydusMetaLayer.Load(snapshotID); exists {
-			slog.WarnContext(ctx, "nydus duplicate mount meta layer", "ref", refspec.String(), "digest", target.Digest.String())
+		bindKey := snapshotID + ":" + target.Digest.String()
+		if _, exists := r.nydusMetaLayer.Load(bindKey); exists {
+			slog.DebugContext(ctx, "nydus duplicate bind mount", "ref", refspec.String(), "digest", target.Digest.String())
 			return &layer, nil
 		}
 
@@ -212,39 +229,39 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 			}
 		}
 
-		// Download nydus bootstrap layer to disk.
-		err = r.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: snapshotID}, target.Annotations)
-		if err != nil && !strings.Contains(err.Error(), "file exists") {
-			slog.ErrorContext(ctx, "download snapshot files failed", "err", err)
-			return &layer, err
-		}
+		// Ensure the nydusd mount exists once per snapshotID.
+		if _, mounted := r.mountedSnapshots.Load(snapshotID); !mounted {
+			// Download nydus bootstrap layer to disk.
+			err = r.nydusFs.PrepareMetaLayer(ctx, storage.Snapshot{ID: snapshotID}, target.Annotations)
+			if err != nil && !strings.Contains(err.Error(), "file exists") {
+				slog.ErrorContext(ctx, "download snapshot files failed", "err", err)
+				return &layer, err
+			}
 
-		nydusMsgChannel := make(chan nydusMessage)
+			nydusMsgChannel := make(chan nydusMessage)
 
-		go func() {
-			slog.DebugContext(ctx, "nydus mount meta layer", "ref", refspec.String(), "digest", target.Digest.String())
-			err = r.nydusFs.Mount(ctx, snapshotID, target.Annotations)
-			if err != nil {
-				slog.ErrorContext(ctx, "nydus mount failed", "err", err)
-				nydusMsgChannel <- nydusMessage{
-					Err: err,
+			go func() {
+				slog.DebugContext(ctx, "nydus mount snapshot", "ref", refspec.String(), "digest", target.Digest.String(), "snapshotID", snapshotID)
+				err = r.nydusFs.Mount(ctx, snapshotID, target.Annotations)
+				if err != nil {
+					slog.ErrorContext(ctx, "nydus mount failed", "err", err)
+					nydusMsgChannel <- nydusMessage{Err: err}
+					return
 				}
-				return
+				nydusMsgChannel <- nydusMessage{Err: nil}
+			}()
+
+			event := <-nydusMsgChannel
+			if event.Err != nil {
+				return &layer, event.Err
 			}
 
-			nydusMsgChannel <- nydusMessage{
-				Err: nil,
+			err = r.nydusFs.WaitUntilReady(ctx, snapshotID)
+			if err != nil {
+				return &layer, ErrMountMetaLayerFailed
 			}
-		}()
 
-		event := <-nydusMsgChannel
-		if event.Err != nil {
-			return &layer, event.Err
-		}
-
-		err = r.nydusFs.WaitUntilReady(ctx, snapshotID)
-		if err != nil {
-			return &layer, ErrMountMetaLayerFailed
+			r.mountedSnapshots.Store(snapshotID, true)
 		}
 
 		// Link nydusd mount dir to <mountpoint>/<ref>/<digest>/diff
@@ -266,7 +283,7 @@ func (r *LayerManager) ResolverMetaLayer(ctx context.Context, refspec reference.
 				_ = unixUnmount(targetPath, 0)
 				return &layer, err
 			}
-			r.nydusMetaLayer.Store(snapshotID, targetPath)
+			r.nydusMetaLayer.Store(bindKey, targetPath)
 			return &layer, nil
 		}
 		slog.ErrorContext(ctx, "get mount point failed", "err", err)
@@ -292,12 +309,13 @@ func (r *LayerManager) Release(ctx context.Context, refspec reference.Spec, dgst
 	r.refCounter[refspec.String()][dgst.String()]--
 	i := r.refCounter[refspec.String()][dgst.String()]
 	if i <= 0 {
-		if v, ok := r.nydusMetaLayer.Load(snapshotID); ok {
+		bindKey := snapshotID + ":" + dgst.String()
+		if v, ok := r.nydusMetaLayer.Load(bindKey); ok {
 			if err := unixUnmount(v.(string), 0); err != nil {
 				slog.ErrorContext(ctx, "umount bind nydus failed", "ref", refspec.String(), "digest", dgst.String(), "err", err)
 				return 0, err
 			}
-			r.nydusMetaLayer.Delete(snapshotID)
+			r.nydusMetaLayer.Delete(bindKey)
 		}
 		// No reference to this layer. release it.
 		delete(r.refCounter[refspec.String()], dgst.String())

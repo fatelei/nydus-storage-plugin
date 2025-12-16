@@ -71,11 +71,20 @@ func (f *blobFile) openAt(ctx context.Context, off int64) error {
 func (f *blobFile) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	// Guard against invalid handles (primarily for tests) and avoid panics.
+	if f.hostsFn == nil || f.ref == "" {
+		return nil, syscall.EIO
+	}
+
 	if f.rc == nil || off != f.pos {
 		if err := f.openAt(ctx, off); err != nil {
 			slog.Warn("blob openAt failed", "off", off, "err", err)
 			return nil, syscall.EIO
 		}
+	}
+	if len(dest) == 0 {
+		return fuse.ReadResultData(nil), 0
 	}
 	n, err := f.rc.Read(dest)
 	if n > 0 {
